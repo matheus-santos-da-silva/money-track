@@ -1,0 +1,16 @@
+[submodule "front"]
+	path = front
+	url = https://github.com/matheus-santos-da-silva/money-track-react-native.git
+	branch = main
+[submodule "users-service"]
+	path = users-service
+	url = https://github.com/matheus-santos-da-silva/money-track-user-service.git
+	branch = main
+[submodule "finance-service"]
+	path = finance-service
+	url = https://github.com/matheus-santos-da-silva/money-track-finance-service.git
+	branch = main
+[submodule "money-track-infra"]
+	path = money-track-infra
+	url = https://github.com/matheus-santos-da-silva/money-track-infra.git
+	branch = main

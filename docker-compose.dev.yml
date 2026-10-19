@@ -1,0 +1,103 @@
+services:
+  # ---- Infra ----
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "cub kafka-ready -b kafka:9092 1 20"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ---- Banco do Users Service ----
+  user-service-db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${USERS_DB_USER:?defina USERS_DB_USER no .env (veja .env.example)}
+      POSTGRES_PASSWORD: ${USERS_DB_PASSWORD:?defina USERS_DB_PASSWORD no .env (veja .env.example)}
+      POSTGRES_DB: user-service-db
+    ports:
+      - "5433:5432"
+    volumes:
+      - users_service_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---- Users Service ----
+  users-service:
+    build: ./users-service
+    environment:
+      DATABASE_URL: postgres://${USERS_DB_USER}:${USERS_DB_PASSWORD}@user-service-db:5432/user-service-db
+      KAFKA_URL: kafka:9092
+    volumes:
+      - ./users-service:/app
+    depends_on:
+      user-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3002:3000"
+    command: sh -c "yarn prisma generate && npx prisma migrate deploy && yarn start:dev"
+
+  # ---- Banco do Finance Service ----
+  finance-service-db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${FINANCE_DB_USER:?defina FINANCE_DB_USER no .env (veja .env.example)}
+      POSTGRES_PASSWORD: ${FINANCE_DB_PASSWORD:?defina FINANCE_DB_PASSWORD no .env (veja .env.example)}
+      POSTGRES_DB: finance-service-db
+    ports:
+      - "5434:5432"
+    volumes:
+      - finance_service_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---- Finance Service ----
+  finance-service:
+    build: ./finance-service
+    environment:
+      DATABASE_URL: postgres://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-service-db:5432/finance-service-db
+      KAFKA_URL: kafka:9092
+    volumes:
+      - ./finance-service:/app
+    depends_on:
+      finance-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    command: sh -c "yarn prisma generate && npx prisma migrate deploy && yarn run seed && yarn start:dev"
+
+volumes:
+  kafka_data:
+  users_service_db_data:
+  finance_service_db_data:

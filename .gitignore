@@ -1,0 +1,18 @@
+# Segredos e arquivos locais
+.env
+.env.*
+!.env.example
+*.keystore
+node_modules/
+
+# Editores e ferramentas locais
+.idea/
+.vscode/
+.claude/
+CLAUDE.md
+
+# Docs internos (só locais)
+docs/DEPLOY.md
+docs/DEVELOPMENT.md
+docs/API.md
+docs/DECISIONS.md

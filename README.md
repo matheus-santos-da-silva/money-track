@@ -93,9 +93,9 @@ Os serviços sobem em `localhost:3002` (users) e `localhost:3001/finance` (finan
 cd front
 cp .env.example .env     # emulador: USERS_SERVICE_URL=http://10.0.2.2:3002
                          #           FINANCE_SERVICE_URL=http://10.0.2.2:3001/finance
-yarn install
-yarn start               # Metro
-yarn android             # em outro terminal
+npm install
+npm start                # Metro
+npm run android          # em outro terminal
 ```
 ## Documentação
 

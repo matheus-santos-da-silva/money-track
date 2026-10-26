@@ -51,6 +51,7 @@ services:
     environment:
       DATABASE_URL: postgres://${USERS_DB_USER}:${USERS_DB_PASSWORD}@user-service-db:5432/user-service-db
       KAFKA_URL: kafka:9092
+      LOG_FORMAT: pretty
     volumes:
       - ./users-service:/app
     depends_on:
@@ -86,6 +87,7 @@ services:
     environment:
       DATABASE_URL: postgres://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-service-db:5432/finance-service-db
       KAFKA_URL: kafka:9092
+      LOG_FORMAT: pretty
     volumes:
       - ./finance-service:/app
     depends_on:

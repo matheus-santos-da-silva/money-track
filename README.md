@@ -11,6 +11,11 @@ App mobile de finanças pessoais: registre despesas e receitas (com parcelamento
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
 <p align="center">
+  <img src="docs/assets/welcome.png" width="230" alt="Tela de boas-vindas com as opções de criar conta ou entrar" />
+  <img src="docs/assets/login.png" width="230" alt="Tela de login com e-mail e senha" />
+  <img src="docs/assets/sign-up.png" width="230" alt="Primeiro passo do cadastro, com e-mail, senha e a regra de tamanho da senha" />
+</p>
+<p align="center">
   <img src="docs/assets/home.png" width="230" alt="Tela inicial com saldo do mês, receitas, despesas e últimos lançamentos" />
   <img src="docs/assets/statement.png" width="230" alt="Extrato com totais do mês, filtros e lançamentos agrupados por dia" />
   <img src="docs/assets/reports-overview.png" width="230" alt="Relatórios com saldo do mês, comparação com o mês anterior e taxa de economia" />

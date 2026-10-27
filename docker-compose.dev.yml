@@ -1,6 +1,15 @@
+# Rotação dos logs de cada container: no máximo 3 arquivos de 10 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
 services:
   # ---- Infra ----
   kafka:
+    logging: *logging
     image: confluentinc/cp-kafka:7.9.0
     environment:
       KAFKA_NODE_ID: 1
@@ -29,6 +38,7 @@ services:
 
   # ---- Banco do Users Service ----
   user-service-db:
+    logging: *logging
     image: postgres
     restart: always
     environment:
@@ -47,6 +57,7 @@ services:
 
   # ---- Users Service ----
   users-service:
+    logging: *logging
     build: ./users-service
     environment:
       DATABASE_URL: postgres://${USERS_DB_USER}:${USERS_DB_PASSWORD}@user-service-db:5432/user-service-db
@@ -62,9 +73,16 @@ services:
     ports:
       - "3002:3000"
     command: sh -c "yarn prisma generate && npx prisma migrate deploy && yarn start:dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
 
   # ---- Banco do Finance Service ----
   finance-service-db:
+    logging: *logging
     image: postgres
     restart: always
     environment:
@@ -83,6 +101,7 @@ services:
 
   # ---- Finance Service ----
   finance-service:
+    logging: *logging
     build: ./finance-service
     environment:
       DATABASE_URL: postgres://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-service-db:5432/finance-service-db
@@ -98,6 +117,12 @@ services:
     ports:
       - "3001:3001"
     command: sh -c "yarn prisma generate && npx prisma migrate deploy && yarn run seed && yarn start:dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
 
 volumes:
   kafka_data:

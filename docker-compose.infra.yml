@@ -1,7 +1,16 @@
 name: money-track-prod-local
 
+# Rotação dos logs de cada container: no máximo 3 arquivos de 10 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
 services:
   kafka:
+    logging: *logging
     image: confluentinc/cp-kafka:7.9.0
     environment:
       KAFKA_NODE_ID: 1
@@ -28,6 +37,7 @@ services:
       start_period: 60s
 
   users-service-db:
+    logging: *logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${USERS_DB_USER:?defina USERS_DB_USER no .env (veja .env.example)}
@@ -44,6 +54,7 @@ services:
       retries: 10
 
   users-service:
+    logging: *logging
     build: ./users-service
     environment:
       DATABASE_URL: postgres://${USERS_DB_USER}:${USERS_DB_PASSWORD}@users-service-db:5432/users-service-db
@@ -58,8 +69,15 @@ services:
     ports:
       - "3002:3000"
     command: sh -c "npx prisma migrate deploy && yarn start:prod"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
 
   finance-service-db:
+    logging: *logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${FINANCE_DB_USER:?defina FINANCE_DB_USER no .env (veja .env.example)}
@@ -76,6 +94,7 @@ services:
       retries: 10
 
   finance-service:
+    logging: *logging
     build: ./finance-service
     environment:
       DATABASE_URL: postgres://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-service-db:5432/finance-service-db
@@ -91,6 +110,12 @@ services:
     ports:
       - "3001:3001"
     command: sh -c "npx prisma migrate deploy && yarn start:prod"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
 
 volumes:
   kafka_data:

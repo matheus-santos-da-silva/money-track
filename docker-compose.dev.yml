@@ -63,7 +63,7 @@ services:
       DATABASE_URL: postgres://${USERS_DB_USER}:${USERS_DB_PASSWORD}@user-service-db:5432/user-service-db
       KAFKA_URL: kafka:9092
       LOG_FORMAT: pretty
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     volumes:
       - ./users-service:/app
     depends_on:
@@ -108,7 +108,7 @@ services:
       DATABASE_URL: postgres://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-service-db:5432/finance-service-db
       KAFKA_URL: kafka:9092
       LOG_FORMAT: pretty
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     volumes:
       - ./finance-service:/app
     depends_on:
@@ -127,12 +127,23 @@ services:
       start_period: 60s
 
   # ---- Observabilidade ----
+  otel-collector:
+    logging: *logging
+    image: otel/opentelemetry-collector:0.164.0
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./observability/otel-collector.yml:/etc/otelcol/config.yml:ro
+    depends_on:
+      - tempo
+      - prometheus
+
   prometheus:
     logging: *logging
     image: prom/prometheus:v3.5.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
+      - --web.enable-otlp-receiver
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -144,7 +155,6 @@ services:
       timeout: 3s
       retries: 3
 
-  # Guarda os traces. Sem healthcheck: a imagem é distroless (sem shell nem wget); a prontidão fica em GET :3200/ready.
   tempo:
     logging: *logging
     image: grafana/tempo:2.10.10
@@ -153,7 +163,6 @@ services:
       - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo_data:/var/tempo
 
-  # Mostra métricas (Prometheus) e traces (Tempo). Login anônimo como Admin: só em dev.
   grafana:
     logging: *logging
     image: grafana/grafana:13.2.5

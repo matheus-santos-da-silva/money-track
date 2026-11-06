@@ -1,5 +1,6 @@
 apiVersion: 1
 
+# Nos arquivos de provisionamento o Grafana expande $VAR: as variáveis do próprio Grafana vão escapadas ($$).
 datasources:
   - name: Prometheus
     type: prometheus
@@ -13,3 +14,31 @@ datasources:
     uid: tempo
     access: proxy
     url: http://tempo:3200
+    jsonData:
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        tags:
+          - key: service.name
+            value: service_name
+        customQuery: true
+        query: '{$${__tags}} | trace_id="$${__span.traceId}"'
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - name: trace_id
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: Ver trace

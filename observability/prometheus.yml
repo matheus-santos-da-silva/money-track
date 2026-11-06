@@ -6,6 +6,9 @@ storage:
   tsdb:
     out_of_order_time_window: 30m
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: otel-collector
     static_configs:

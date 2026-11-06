@@ -16,6 +16,26 @@ compactor:
   compaction:
     block_retention: 168h
 
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+  processor:
+    service_graphs:
+      # O 1º atributo presente nomeia o nó de quem não é instrumentado (o banco); a instrumentação pg usa a semconv nova.
+      peer_attributes: [peer.service, db.namespace, db.name]
+      enable_messaging_system_latency_histogram: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      # Só service-graphs: span-metrics duplicaria a latência HTTP que os serviços já medem.
+      processors: [service-graphs]
+
 storage:
   trace:
     backend: local

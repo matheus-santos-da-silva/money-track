@@ -136,6 +136,7 @@ services:
     depends_on:
       - tempo
       - prometheus
+      - loki
 
   prometheus:
     logging: *logging
@@ -144,8 +145,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
       - --web.enable-otlp-receiver
+      - --web.enable-remote-write-receiver
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -163,6 +166,14 @@ services:
       - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo_data:/var/tempo
 
+  loki:
+    logging: *logging
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+
   grafana:
     logging: *logging
     image: grafana/grafana:13.2.5
@@ -172,12 +183,14 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
     depends_on:
       - prometheus
       - tempo
+      - loki
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 10s
@@ -190,4 +203,5 @@ volumes:
   finance_service_db_data:
   prometheus_data:
   tempo_data:
+  loki_data:
   grafana_data:

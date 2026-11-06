@@ -1,0 +1,248 @@
+apiVersion: 1
+
+# Os templates usam .Labels/.Values (e não $labels): o Grafana expande $VAR nos arquivos de provisionamento.
+# Sem contact point configurado: os alertas aparecem em Alerting → Alert rules.
+groups:
+  - orgId: 1
+    name: slo
+    folder: Money Track
+    interval: 1m
+    rules:
+      # Burn rate para SLO de 7 dias: rápido = 2% do orçamento em 1h (0,02 × 168h / 1h = 3,36);
+      # lento = 5% em 6h (0,05 × 168h / 6h = 1,4). A janela curta confirma que o problema ainda está acontecendo.
+      - uid: slo-burn-fast
+        title: SLO queimando rápido
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                (
+                  slo:sli_error:ratio_rate1h / on (slo) group_left () (1 - slo:objective:ratio) > 3.36
+                  and
+                  slo:sli_error:ratio_rate5m / on (slo) group_left () (1 - slo:objective:ratio) > 3.36
+                )
+                and on (job, slo) slo:sli_events:increase1h >= 20
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ index .Labels "slo" }} em {{ index .Labels "job" }} gastando o orçamento de erro rápido demais'
+          description: 'Burn rate de {{ printf "%.1f" (index .Values "A").Value }} na última hora (limite 3,36): nesse ritmo, 2% do orçamento de 7 dias some a cada hora.'
+
+      - uid: slo-burn-slow
+        title: SLO queimando devagar
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 21600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                (
+                  slo:sli_error:ratio_rate6h / on (slo) group_left () (1 - slo:objective:ratio) > 1.4
+                  and
+                  slo:sli_error:ratio_rate30m / on (slo) group_left () (1 - slo:objective:ratio) > 1.4
+                )
+                and on (job, slo) slo:sli_events:increase6h >= 50
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ index .Labels "slo" }} em {{ index .Labels "job" }} gastando o orçamento de erro acima do ritmo'
+          description: 'Burn rate de {{ printf "%.1f" (index .Values "A").Value }} nas últimas 6 horas (limite 1,4).'
+
+  - orgId: 1
+    name: servicos
+    folder: Money Track
+    interval: 1m
+    rules:
+      # As métricas de runtime saem a cada 15 s mesmo sem tráfego: se sumirem, o serviço caiu ou parou de exportar.
+      - uid: telemetry-absent
+        title: Serviço sem telemetria
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                absent_over_time(nodejs_eventloop_utilization_ratio{job="users-service"}[2m])
+                or absent_over_time(nodejs_eventloop_utilization_ratio{job="finance-service"}[2m])
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ index .Labels "job" }} não envia métricas há mais de 2 minutos'
+          description: O processo caiu, travou ou perdeu o caminho até o OTel Collector.
+
+      - uid: collector-down
+        title: OTel Collector fora do ar
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{job="otel-collector"}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: O Prometheus não alcança o OTel Collector
+          description: Sem o Collector, traces, métricas e logs dos serviços não chegam a lugar nenhum.
+
+  - orgId: 1
+    name: eventos
+    folder: Money Track
+    interval: 1m
+    rules:
+      # A série de dead_lettered só nasce no 1º evento, e increase() não conta a 1ª amostra:
+      # o "unless ... offset" pega a série recém-criada. O "> 0" é necessário: o "or" só usa o lado direito
+      # para séries que não existem no esquerdo, e um increase() igual a 0 já conta como existente.
+      - uid: kafka-dead-letter
+        title: Evento enviado para a DLQ
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                sum by (messaging_destination_name) (
+                  increase(money_track_kafka_messages_handled_total{outcome="dead_lettered"}[10m]) > 0
+                  or (
+                    money_track_kafka_messages_handled_total{outcome="dead_lettered"}
+                    unless money_track_kafka_messages_handled_total{outcome="dead_lettered"} offset 10m
+                  )
+                )
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Evento de {{ index .Labels "messaging_destination_name" }} foi para a DLQ'
+          description: Erro permanente ao processar no finance-service. Veja os logs do consumer no dashboard Kafka e eventos.
+
+  - orgId: 1
+    name: seguranca-e-logs
+    folder: Money Track
+    interval: 1m
+    rules:
+      # O rate limit do login é por IP (10/min); este alerta pega tentativas espalhadas em vários IPs.
+      - uid: sign-in-failures
+        title: Pico de logins com senha errada
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(rate(money_track_users_sign_ins_total{result="invalid_credentials"}[5m])) * 60
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Mais de 10 logins com senha errada por minuto ({{ printf "%.0f" (index .Values "A").Value }}/min)'
+          description: Possível tentativa de força bruta. Veja o painel Logins por minuto.
+
+      - uid: error-logs
+        title: Pico de logs de erro
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum by (service_name) (count_over_time({service_name=~".+"} | severity_text=~"error|fatal" [5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ index .Labels "service_name" }} registrou {{ printf "%.0f" (index .Values "A").Value }} logs de erro em 5 minutos'
+          description: Veja o painel Avisos e erros no dashboard Visão geral e siga o trace_id até o Tempo.

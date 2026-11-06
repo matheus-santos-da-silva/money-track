@@ -1,0 +1,134 @@
+# SLOs em janela de 7 dias. Toda série tem os labels job e slo, então um dashboard ou alerta serve para todos.
+# slo:sli_error:ratio_rate<janela> = fração de eventos ruins na janela. Sem tráfego a série some (não vira NaN);
+# com tráfego e sem erro, o "or ... * 0" garante 0 em vez de nenhuma série.
+groups:
+  - name: slo-objectives
+    rules:
+      - record: slo:objective:ratio
+        expr: vector(0.995)
+        labels:
+          slo: http_availability
+      - record: slo:objective:ratio
+        expr: vector(0.95)
+        labels:
+          slo: http_latency
+      - record: slo:objective:ratio
+        expr: vector(0.999)
+        labels:
+          slo: kafka_processing
+
+  - name: slo-sli
+    rules:
+      # Disponibilidade: 5xx são ruins; 4xx são erro de quem chamou, não do serviço.
+      - record: slo:sli_error:ratio_rate5m
+        labels: { slo: http_availability }
+        expr: |
+          (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) or sum by (job) (rate(http_server_request_duration_seconds_count[5m])) * 0)
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0)
+      - record: slo:sli_error:ratio_rate30m
+        labels: { slo: http_availability }
+        expr: |
+          (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[30m])) or sum by (job) (rate(http_server_request_duration_seconds_count[30m])) * 0)
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[30m])) > 0)
+      - record: slo:sli_error:ratio_rate1h
+        labels: { slo: http_availability }
+        expr: |
+          (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[1h])) or sum by (job) (rate(http_server_request_duration_seconds_count[1h])) * 0)
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[1h])) > 0)
+      - record: slo:sli_error:ratio_rate6h
+        labels: { slo: http_availability }
+        expr: |
+          (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[6h])) or sum by (job) (rate(http_server_request_duration_seconds_count[6h])) * 0)
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[6h])) > 0)
+
+      # Latência: ruim é passar de 500 ms (fronteira de bucket do histograma).
+      - record: slo:sli_error:ratio_rate5m
+        labels: { slo: http_latency }
+        expr: |
+          1 - sum by (job) (rate(http_server_request_duration_seconds_bucket{le="0.5"}[5m]))
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0)
+      - record: slo:sli_error:ratio_rate30m
+        labels: { slo: http_latency }
+        expr: |
+          1 - sum by (job) (rate(http_server_request_duration_seconds_bucket{le="0.5"}[30m]))
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[30m])) > 0)
+      - record: slo:sli_error:ratio_rate1h
+        labels: { slo: http_latency }
+        expr: |
+          1 - sum by (job) (rate(http_server_request_duration_seconds_bucket{le="0.5"}[1h]))
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[1h])) > 0)
+      - record: slo:sli_error:ratio_rate6h
+        labels: { slo: http_latency }
+        expr: |
+          1 - sum by (job) (rate(http_server_request_duration_seconds_bucket{le="0.5"}[6h]))
+            / (sum by (job) (rate(http_server_request_duration_seconds_count[6h])) > 0)
+
+      # Eventos: só processed é bom; dead_lettered e failed (será reentregue) contam como ruins.
+      - record: slo:sli_error:ratio_rate5m
+        labels: { slo: kafka_processing }
+        expr: |
+          (sum by (job) (rate(money_track_kafka_messages_handled_total{outcome!="processed"}[5m])) or sum by (job) (rate(money_track_kafka_messages_handled_total[5m])) * 0)
+            / (sum by (job) (rate(money_track_kafka_messages_handled_total[5m])) > 0)
+      - record: slo:sli_error:ratio_rate30m
+        labels: { slo: kafka_processing }
+        expr: |
+          (sum by (job) (rate(money_track_kafka_messages_handled_total{outcome!="processed"}[30m])) or sum by (job) (rate(money_track_kafka_messages_handled_total[30m])) * 0)
+            / (sum by (job) (rate(money_track_kafka_messages_handled_total[30m])) > 0)
+      - record: slo:sli_error:ratio_rate1h
+        labels: { slo: kafka_processing }
+        expr: |
+          (sum by (job) (rate(money_track_kafka_messages_handled_total{outcome!="processed"}[1h])) or sum by (job) (rate(money_track_kafka_messages_handled_total[1h])) * 0)
+            / (sum by (job) (rate(money_track_kafka_messages_handled_total[1h])) > 0)
+      - record: slo:sli_error:ratio_rate6h
+        labels: { slo: kafka_processing }
+        expr: |
+          (sum by (job) (rate(money_track_kafka_messages_handled_total{outcome!="processed"}[6h])) or sum by (job) (rate(money_track_kafka_messages_handled_total[6h])) * 0)
+            / (sum by (job) (rate(money_track_kafka_messages_handled_total[6h])) > 0)
+
+  # Quantos eventos houve na janela. Os alertas exigem um mínimo: com pouco volume, 1 requisição lenta já estoura o SLO.
+  - name: slo-volume
+    rules:
+      - record: slo:sli_events:increase1h
+        labels: { slo: http_availability }
+        expr: sum by (job) (increase(http_server_request_duration_seconds_count[1h]))
+      - record: slo:sli_events:increase1h
+        labels: { slo: http_latency }
+        expr: sum by (job) (increase(http_server_request_duration_seconds_count[1h]))
+      - record: slo:sli_events:increase1h
+        labels: { slo: kafka_processing }
+        expr: sum by (job) (increase(money_track_kafka_messages_handled_total[1h]))
+      - record: slo:sli_events:increase6h
+        labels: { slo: http_availability }
+        expr: sum by (job) (increase(http_server_request_duration_seconds_count[6h]))
+      - record: slo:sli_events:increase6h
+        labels: { slo: http_latency }
+        expr: sum by (job) (increase(http_server_request_duration_seconds_count[6h]))
+      - record: slo:sli_events:increase6h
+        labels: { slo: kafka_processing }
+        expr: sum by (job) (increase(money_track_kafka_messages_handled_total[6h]))
+
+  # A janela inteira do SLO muda devagar: avaliar a cada minuto basta e custa menos.
+  - name: slo-sli-7d
+    interval: 1m
+    rules:
+      - record: slo:sli_error:ratio_rate7d
+        labels: { slo: http_availability }
+        expr: |
+          (sum by (job) (increase(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[7d])) or sum by (job) (increase(http_server_request_duration_seconds_count[7d])) * 0)
+            / (sum by (job) (increase(http_server_request_duration_seconds_count[7d])) > 0)
+      - record: slo:sli_error:ratio_rate7d
+        labels: { slo: http_latency }
+        expr: |
+          1 - sum by (job) (increase(http_server_request_duration_seconds_bucket{le="0.5"}[7d]))
+            / (sum by (job) (increase(http_server_request_duration_seconds_count[7d])) > 0)
+      - record: slo:sli_error:ratio_rate7d
+        labels: { slo: kafka_processing }
+        expr: |
+          (sum by (job) (increase(money_track_kafka_messages_handled_total{outcome!="processed"}[7d])) or sum by (job) (increase(money_track_kafka_messages_handled_total[7d])) * 0)
+            / (sum by (job) (increase(money_track_kafka_messages_handled_total[7d])) > 0)
+
+      # Fração do orçamento de erro que ainda resta na janela (1 = intacto, 0 = esgotado, negativo = estourado).
+      - record: slo:error_budget_remaining:ratio
+        expr: |
+          1 - slo:sli_error:ratio_rate7d
+            / on (slo) group_left () (1 - slo:objective:ratio)
